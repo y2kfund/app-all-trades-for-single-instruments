@@ -1,0 +1,1 @@
+# app-all-trades-for-single-instruments

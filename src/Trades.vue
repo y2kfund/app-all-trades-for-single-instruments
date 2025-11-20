@@ -25,7 +25,7 @@ const emit = defineEmits<{
 }>()
 
 // Tab management
-const activeTab = ref<'trades' | 'orders'>('trades')
+const activeTab = ref<'orders' | 'trades'>('orders')
 
 // Handle row click from TradeData component
 const handleTradeRowClick = (row: Trade) => {
@@ -42,16 +42,16 @@ const handleOrderRowClick = (row: Order) => {
     <!-- Tabs -->
     <div class="tabs">
       <button 
-        :class="['tab', { active: activeTab === 'trades' }]"
-        @click="activeTab = 'trades'"
-      >
-        All Trades
-      </button>
-      <button 
         :class="['tab', { active: activeTab === 'orders' }]"
         @click="activeTab = 'orders'"
       >
         All Orders
+      </button>
+      <button 
+        :class="['tab', { active: activeTab === 'trades' }]"
+        @click="activeTab = 'trades'"
+      >
+        All Trades
       </button>
     </div>
 

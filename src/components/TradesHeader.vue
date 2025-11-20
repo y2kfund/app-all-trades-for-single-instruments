@@ -1,8 +1,6 @@
 <template>
   <div class="trades-header">
-    <h2>
-      <span>All Trades</span>
-    </h2>
+    <h2>All Trades</h2>
     <div class="trades-tools">
       <div class="trades-count">{{ totalTrades }} trades</div>
     </div>

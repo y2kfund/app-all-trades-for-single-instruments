@@ -236,4 +236,20 @@ onBeforeUnmount(() => {
   </div>
 </template>
 
-<style src="./Trades.css"></style>
+<!--style src="./Trades.css"></style-->
+
+<style>
+@import 'tabulator-tables/dist/css/tabulator_modern.min.css';
+
+.tabulator-header-filter input {
+    padding: 2px 4px !important;
+}
+
+body {
+    margin: 0;
+}
+</style>
+
+<style scoped>
+@import './Trades.css';
+</style>

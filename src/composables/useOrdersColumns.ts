@@ -383,7 +383,22 @@ export function useOrdersColumns(
         sorter: 'date',
         headerFilter: createDateRangeHeaderFilter(),
         headerFilterFunc: dateRangeFilterFunc,
-        sorterFunc: dateSorterFunc,
+        // Add custom sorter function for text date
+        sorterFunc: (a: any, b: any, dir: any, rowA: any, rowB: any) => {
+          // Parse as YYYY-MM-DD or fallback to Date
+          const parse = (val: string) => {
+            if (!val) return 0
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(val.trim())
+            if (m) {
+              return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime()
+            }
+            const d = new Date(val)
+            return isNaN(d.getTime()) ? 0 : d.getTime()
+          }
+          const ta = parse(rowA.getData().settleDateTarget)
+          const tb = parse(rowB.getData().settleDateTarget)
+          return ta - tb
+        },
         formatter: dateFormatter,
         contextMenu: createFetchedAtContextMenu()
       }],

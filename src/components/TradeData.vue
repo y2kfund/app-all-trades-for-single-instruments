@@ -165,7 +165,12 @@ const { tabulator, isTabulatorReady, isTableInitialized } = useTabulatorSetup(
       emit('row-click', data)
     }
   },
-  props.onRowClick
+  props.onRowClick,
+  {
+    initialSort: [
+      { column: 'settleDateTarget', dir: 'desc' }
+    ]
+  }
 )
 
 // Sync tabulator ref to filters
@@ -175,6 +180,12 @@ watch(tabulator, (newTabulator) => {
 
 watch(isTabulatorReady, (isReady) => {
   tabulatorReadyRef.value = isReady
+})
+
+watch([tabulator, q.data, isTabulatorReady], ([tab, data, ready]) => {
+  if (tab && ready && data && data.length > 0) {
+    tab.setSort('settleDateTarget', 'desc')
+  }
 })
 
 // Setup external event handlers

@@ -8,6 +8,7 @@ import 'flatpickr/dist/flatpickr.min.css'
 // Components
 import ToastNotification from './components/ToastNotification.vue'
 import TradeData from './components/TradeData.vue'
+import OrderData from './components/OrderData.vue'
 
 // Props & Emits
 const props = withDefaults(defineProps<TradesProps>(), {
@@ -28,6 +29,10 @@ const activeTab = ref<'trades' | 'orders'>('trades')
 
 // Handle row click from TradeData component
 const handleTradeRowClick = (row: Trade) => {
+  emit('row-click', row)
+}
+
+const handleOrderRowClick = (row: Order) => {
   emit('row-click', row)
 }
 </script>
@@ -64,10 +69,14 @@ const handleTradeRowClick = (row: Trade) => {
 
     <!-- Orders Tab -->
     <div v-show="activeTab === 'orders'" class="tab-content">
-      <!-- TODO: Add Orders component here -->
-      <div>
-        Orders component will be added here
-      </div>
+      <OrderData
+        :account-id="props.accountId"
+        :user-id="props.userId"
+        :symbol-root="props.symbolRoot"
+        :window="props.window"
+        :on-row-click="props.onRowClick"
+        @row-click="handleOrderRowClick"
+      />
     </div>
   </div>
 </template>

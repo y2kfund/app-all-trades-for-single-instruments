@@ -11,25 +11,7 @@ declare const _default: import('vue').DefineComponent<TradesProps, {}, {}, {}, {
 }>, {
     accountId: string;
     userId: string | null;
-    window: string | null;
     symbolRoot: string;
-}, {}, {}, {}, string, import('vue').ComponentProvideOptions, false, {
-    tradesColumnsBtnRef: import('vue').CreateComponentPublicInstanceWithMixins<Readonly<{
-        totalTrades: number;
-    }> & Readonly<{}>, {
-        columnsBtnRef: import('vue').Ref<HTMLElement | null, HTMLElement | null>;
-    }, {}, {}, {}, import('vue').ComponentOptionsMixin, import('vue').ComponentOptionsMixin, {}, import('vue').PublicProps, {}, false, {}, {}, import('vue').GlobalComponents, import('vue').GlobalDirectives, string, {}, HTMLDivElement, import('vue').ComponentProvideOptions, {
-        P: {};
-        B: {};
-        D: {};
-        C: {};
-        M: {};
-        Defaults: {};
-    }, Readonly<{
-        totalTrades: number;
-    }> & Readonly<{}>, {
-        columnsBtnRef: import('vue').Ref<HTMLElement | null, HTMLElement | null>;
-    }, {}, {}, {}, {}> | null;
-    tableDiv: HTMLDivElement;
-}, HTMLDivElement>;
+    window: string | null;
+}, {}, {}, {}, string, import('vue').ComponentProvideOptions, false, {}, HTMLDivElement>;
 export default _default;

@@ -24,10 +24,9 @@ import { formatTimestampWithTimezone, extractTagsFromSymbol } from './utils/form
 // Props & Emits
 const props = withDefaults(defineProps<TradesProps>(), {
   accountId: '1',
-  highlightPnL: false,
-  showHeaderLink: false,
   userId: null,
-  window: null
+  window: null,
+  symbolRoot: 'META',
 })
 
 const emit = defineEmits<{ 
@@ -40,7 +39,7 @@ const emit = defineEmits<{
 const eventBus = inject<any>('eventBus')
 
 // Query trades data
-const q = useTradeQuery(props.accountId, props.userId)
+const q = useTradeQuery(props.accountId, props.userId, props.symbolRoot)
 
 // Toast notifications
 const { toasts, showToast, removeToast } = useToast()

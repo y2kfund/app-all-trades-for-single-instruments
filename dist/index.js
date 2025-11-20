@@ -19810,7 +19810,7 @@ const Ff = { class: "toast-container" }, Of = { key: 0 }, zf = ["onClick"], Hf =
   for (const [i, s] of e)
     t[i] = s;
   return t;
-}, Yf = /* @__PURE__ */ Uf(jf, [["__scopeId", "data-v-1778dd5c"]]);
+}, Yf = /* @__PURE__ */ Uf(jf, [["__scopeId", "data-v-9f19d914"]]);
 export {
   Yf as Trades,
   Yf as default

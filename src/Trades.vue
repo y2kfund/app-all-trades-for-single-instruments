@@ -248,6 +248,10 @@ onBeforeUnmount(() => {
 body {
     margin: 0;
 }
+
+.trades-header h2 {
+    margin: 0;
+}
 </style>
 
 <style scoped>

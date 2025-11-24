@@ -42,7 +42,7 @@ export function useOrdersColumns(
     { field: 'assetCategory', label: 'Asset Class' },
     { field: 'orderTime', label: 'Order Date' },
     { field: 'settleDateTarget', label: 'Settlement Date Target' },
-    { field: 'quantity', label: 'Quantity' },
+    { field: 'quantity', label: 'Accounting Quantity' },
     { field: 'tradePrice', label: 'Trade Price' },
     { field: 'tradeMoney', label: 'Trade Amount' },
     { field: 'netCash', label: 'Net Cash' },
@@ -414,7 +414,14 @@ export function useOrdersColumns(
         formatter: (cell: any) => {
           const value = cell.getValue()
           if (value === null || value === undefined) return '-'
-          return formatNumber(value)
+          const data = cell.getData()
+          if (data.assetCategory === 'OPT') {
+            return data.quantity * 100
+          } else if (data.assetCategory === 'STK') {
+            return data.quantity * 1
+          }
+           
+          return formatNumber(data.quantity)
         },
         cellClick: (e: any, cell: any) => {
           const value = cell.getValue()

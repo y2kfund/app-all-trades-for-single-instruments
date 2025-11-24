@@ -20018,7 +20018,7 @@ function Vf(r, e, t, i, s) {
     { field: "assetCategory", label: "Asset Class" },
     { field: "orderTime", label: "Order Date" },
     { field: "settleDateTarget", label: "Settlement Date Target" },
-    { field: "quantity", label: "Quantity" },
+    { field: "quantity", label: "Accounting Quantity" },
     { field: "tradePrice", label: "Trade Price" },
     { field: "tradeMoney", label: "Trade Amount" },
     { field: "netCash", label: "Net Cash" },
@@ -20275,7 +20275,9 @@ function Vf(r, e, t, i, s) {
           headerFilterFunc: d,
           formatter: (p) => {
             const c = p.getValue();
-            return c == null ? "-" : Vt(c);
+            if (c == null) return "-";
+            const v = p.getData();
+            return v.assetCategory === "OPT" ? v.quantity * 100 : v.assetCategory === "STK" ? v.quantity * 1 : Vt(v.quantity);
           },
           cellClick: (p, c) => {
             const v = c.getValue();

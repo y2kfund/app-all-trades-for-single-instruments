@@ -3,10 +3,12 @@ import type { Ref } from 'vue'
 import flatpickr from 'flatpickr'
 import { formatCurrency, formatNumber, parseTradeDate, extractTagsFromSymbol } from '../utils/formatters'
 
-// Define all possible column field names
+// Update the TradesColumnField type to include the new fields
 export type TradesColumnField = 
   | 'legal_entity'
   | 'symbol'
+  | 'expiryDate'
+  | 'strikePrice'
   | 'buySell'
   | 'openCloseIndicator'
   | 'assetCategory'
@@ -38,6 +40,8 @@ export function useTradesColumns(
   const allTradesColumnOptions: ColumnOption[] = [
     { field: 'legal_entity', label: 'Account' },
     { field: 'symbol', label: 'Financial Instrument' },
+    { field: 'expiryDate', label: 'Expiry Date' },
+    { field: 'strikePrice', label: 'Strike Price' },
     { field: 'buySell', label: 'Side' },
     { field: 'openCloseIndicator', label: 'Open/Close' },
     { field: 'assetCategory', label: 'Asset Class' },
@@ -305,6 +309,98 @@ export function useTradesColumns(
               handleCellFilterClick('symbol', clickedTag)
             }
           }
+        },
+        contextMenu: createFetchedAtContextMenu()
+      }],
+      ['expiryDate', {
+        title: getColLabel('expiryDate'),
+        field: 'expiryDate',
+        minWidth: 110,
+        sorter: 'string',
+        headerFilter: 'input',
+        headerFilterPlaceholder: 'Filter',
+        headerFilterFunc: (headerValue: any, rowValue: any, rowData: any) => {
+          if (!headerValue) return true
+          const tags = extractTagsFromSymbol(rowData.symbol || '')
+          const expiryDate = tags[1] || ''
+          return expiryDate.toLowerCase().includes(String(headerValue).toLowerCase())
+        },
+        formatter: (cell: any) => {
+          const row = cell.getRow().getData()
+          const tags = extractTagsFromSymbol(row.symbol || '')
+          const expiryDate = tags[1] || ''
+          
+          if (expiryDate) {
+            return `<span class="expiry-clickable" data-expiry="${expiryDate}">${expiryDate}</span>`
+          }
+          return '<span style="color:#aaa;font-style:italic;">N/A</span>'
+        },
+        cellClick: (e: any, cell: any) => {
+          const target = e.target as HTMLElement
+          const expirySpan = target.closest('.expiry-clickable')
+          
+          if (expirySpan) {
+            e.stopPropagation()
+            const expiryDate = expirySpan.getAttribute('data-expiry')
+            if (expiryDate) {
+              handleCellFilterClick('expiryDate', expiryDate)
+            }
+          }
+        },
+        sorter: (a: any, b: any, aRow: any, bRow: any) => {
+          const aData = aRow.getData()
+          const bData = bRow.getData()
+          const aDateStr = extractTagsFromSymbol(aData.symbol || '')[1] || ''
+          const bDateStr = extractTagsFromSymbol(bData.symbol || '')[1] || ''
+          if (!aDateStr && !bDateStr) return 0
+          if (!aDateStr) return 1
+          if (!bDateStr) return -1
+          return aDateStr.localeCompare(bDateStr)
+        },
+        contextMenu: createFetchedAtContextMenu()
+      }],
+      ['strikePrice', {
+        title: getColLabel('strikePrice'),
+        field: 'strikePrice',
+        minWidth: 100,
+        hozAlign: 'right',
+        sorter: 'number',
+        headerFilter: 'input',
+        headerFilterPlaceholder: 'Filter',
+        headerFilterFunc: (headerValue: any, rowValue: any, rowData: any) => {
+          if (!headerValue) return true
+          const tags = extractTagsFromSymbol(rowData.symbol || '')
+          const strikePrice = tags[2] || ''
+          return strikePrice.toLowerCase().includes(String(headerValue).toLowerCase())
+        },
+        formatter: (cell: any) => {
+          const row = cell.getRow().getData()
+          const tags = extractTagsFromSymbol(row.symbol || '')
+          const strikePrice = tags[2] || ''
+          
+          if (strikePrice) {
+            return `<span class="strike-clickable" data-strike="${strikePrice}">${strikePrice}</span>`
+          }
+          return '<span style="color:#aaa;font-style:italic;">N/A</span>'
+        },
+        cellClick: (e: any, cell: any) => {
+          const target = e.target as HTMLElement
+          const strikeSpan = target.closest('.strike-clickable')
+          
+          if (strikeSpan) {
+            e.stopPropagation()
+            const strikePrice = strikeSpan.getAttribute('data-strike')
+            if (strikePrice) {
+              handleCellFilterClick('strikePrice', strikePrice)
+            }
+          }
+        },
+        sorter: (a: any, b: any, aRow: any, bRow: any) => {
+          const aData = aRow.getData()
+          const bData = bRow.getData()
+          const aStrike = parseFloat(extractTagsFromSymbol(aData.symbol || '')[2] || '0')
+          const bStrike = parseFloat(extractTagsFromSymbol(bData.symbol || '')[2] || '0')
+          return aStrike - bStrike
         },
         contextMenu: createFetchedAtContextMenu()
       }],

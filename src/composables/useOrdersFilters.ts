@@ -1,7 +1,7 @@
 import { ref, nextTick, type Ref } from 'vue'
 import type { TabulatorFull as Tabulator } from 'tabulator-tables'
 
-export type FilterField = 'legal_entity' | 'symbol' | 'assetCategory' | 'quantity' | 'contract_quantity' | 'accounting_quantity'
+export type FilterField = 'legal_entity' | 'symbol' | 'assetCategory' | 'quantity' | 'contract_quantity' | 'accounting_quantity' | 'expiryDate' | 'strikePrice'
 
 export interface ActiveFilter {
   field: FilterField
@@ -17,29 +17,66 @@ export function useOrdersFilters(
 ) {
   const windowKey = windowProp || 'default'
   
+  // Initialize filters from URL on creation
+  const url = new URL(window.location.href)
+  
   const activeFilters = ref<ActiveFilter[]>([])
   const symbolTagFilters = ref<string[]>([])
-  const accountFilter = ref<string | null>(null)
+  const accountFilter = ref<string | null>(url.searchParams.get('all_cts_clientId') || null)
   const assetFilter = ref<string | null>(null)
   const quantityFilter = ref<number | null>(null)
   const contractQuantityFilter = ref<number | null>(null)
   const accountingQuantityFilter = ref<number | null>(null)
+  const expiryDateFilter = ref<string | null>(url.searchParams.get('expiryDate') || null)
+  const strikePriceFilter = ref<string | null>(url.searchParams.get('strikePrice') || null)
   const totalOrders = ref(0)
 
   function handleCellFilterClick(field: FilterField, value: string) {
+    console.log('[useOrdersFilters] handleCellFilterClick called:', { field, value })
+    
     if (field === 'legal_entity') {
       if (accountFilter.value === value) {
         accountFilter.value = null
         const url = new URL(window.location.href)
-        url.searchParams.delete(`${windowKey}_orders_clientId`)
+        url.searchParams.delete('all_cts_clientId')
         window.history.replaceState({}, '', url.toString())
         if (eventBus) eventBus.emit('account-filter-changed', { accountId: null, source: 'orders' })
       } else {
         accountFilter.value = value
         const url = new URL(window.location.href)
-        url.searchParams.set(`${windowKey}_orders_clientId`, value)
+        url.searchParams.set('all_cts_clientId', value)
         window.history.replaceState({}, '', url.toString())
         if (eventBus) eventBus.emit('account-filter-changed', { accountId: value, source: 'orders' })
+      }
+      updateFilters()
+    } else if (field === 'expiryDate') {
+      if (expiryDateFilter.value === value) {
+        expiryDateFilter.value = null
+        const url = new URL(window.location.href)
+        url.searchParams.delete('expiryDate')
+        window.history.replaceState({}, '', url.toString())
+        if (eventBus) eventBus.emit('expiry-date-filter-changed', { expiryDate: null, source: 'orders' })
+      } else {
+        expiryDateFilter.value = value
+        const url = new URL(window.location.href)
+        url.searchParams.set('expiryDate', value)
+        window.history.replaceState({}, '', url.toString())
+        if (eventBus) eventBus.emit('expiry-date-filter-changed', { expiryDate: value, source: 'orders' })
+      }
+      updateFilters()
+    } else if (field === 'strikePrice') {
+      if (strikePriceFilter.value === value) {
+        strikePriceFilter.value = null
+        const url = new URL(window.location.href)
+        url.searchParams.delete('strikePrice')
+        window.history.replaceState({}, '', url.toString())
+        if (eventBus) eventBus.emit('strike-price-filter-changed', { strikePrice: null, source: 'orders' })
+      } else {
+        strikePriceFilter.value = value
+        const url = new URL(window.location.href)
+        url.searchParams.set('strikePrice', value)
+        window.history.replaceState({}, '', url.toString())
+        if (eventBus) eventBus.emit('strike-price-filter-changed', { strikePrice: value, source: 'orders' })
       }
       updateFilters()
     } else if (field === 'symbol') {
@@ -123,6 +160,18 @@ export function useOrdersFilters(
           if (accountVal !== accountFilter.value) return false
         }
 
+        if (expiryDateFilter.value) {
+          const tags = extractTagsFromSymbol(data.symbol || '')
+          const expiryDate = tags[1] || ''
+          if (expiryDate !== expiryDateFilter.value) return false
+        }
+
+        if (strikePriceFilter.value) {
+          const tags = extractTagsFromSymbol(data.symbol || '')
+          const strikePrice = tags[2] || ''
+          if (strikePrice !== strikePriceFilter.value) return false
+        }
+
         if (assetFilter.value) {
           const assetVal = typeof data.assetCategory === 'object' && data.assetCategory !== null
             ? (data.assetCategory.name || data.assetCategory.id)
@@ -166,6 +215,8 @@ export function useOrdersFilters(
   function syncActiveFiltersFromTable() {
     const next: ActiveFilter[] = []
     if (accountFilter.value) next.push({ field: 'legal_entity', value: accountFilter.value })
+    if (expiryDateFilter.value) next.push({ field: 'expiryDate', value: expiryDateFilter.value })
+    if (strikePriceFilter.value) next.push({ field: 'strikePrice', value: strikePriceFilter.value })
     if (assetFilter.value) next.push({ field: 'assetCategory', value: assetFilter.value })
     if (quantityFilter.value !== null) next.push({ field: 'quantity', value: String(quantityFilter.value) })
     if (accountingQuantityFilter.value !== null) next.push({ field: 'accounting_quantity', value: String(accountingQuantityFilter.value) })
@@ -184,9 +235,21 @@ export function useOrdersFilters(
     if (field === 'legal_entity') {
       accountFilter.value = null
       const url = new URL(window.location.href)
-      url.searchParams.delete(`${windowKey}_orders_clientId`)
+      url.searchParams.delete('all_cts_clientId')
       window.history.replaceState({}, '', url.toString())
       if (eventBus) eventBus.emit('account-filter-changed', { accountId: null, source: 'orders' })
+    } else if (field === 'expiryDate') {
+      expiryDateFilter.value = null
+      const url = new URL(window.location.href)
+      url.searchParams.delete('expiryDate')
+      window.history.replaceState({}, '', url.toString())
+      if (eventBus) eventBus.emit('expiry-date-filter-changed', { expiryDate: null, source: 'orders' })
+    } else if (field === 'strikePrice') {
+      strikePriceFilter.value = null
+      const url = new URL(window.location.href)
+      url.searchParams.delete('strikePrice')
+      window.history.replaceState({}, '', url.toString())
+      if (eventBus) eventBus.emit('strike-price-filter-changed', { strikePrice: null, source: 'orders' })
     } else if (field === 'symbol') {
       symbolTagFilters.value = []
       const url = new URL(window.location.href)
@@ -219,19 +282,58 @@ export function useOrdersFilters(
     assetFilter.value = null
     quantityFilter.value = null
     accountingQuantityFilter.value = null
+    expiryDateFilter.value = null
+    strikePriceFilter.value = null
+    
     const url = new URL(window.location.href)
+    url.searchParams.delete('all_cts_clientId')
+    url.searchParams.delete('expiryDate')
+    url.searchParams.delete('strikePrice')
     url.searchParams.delete(`${windowKey}_orders_clientId`)
     url.searchParams.delete(`${windowKey}_orders_fi`)
     url.searchParams.delete(`${windowKey}_orders_asset`)
     url.searchParams.delete(`${windowKey}_orders_qty`)
     window.history.replaceState({}, '', url.toString())
+    
     if (eventBus) {
       eventBus.emit('account-filter-changed', { accountId: null, source: 'orders' })
+      eventBus.emit('expiry-date-filter-changed', { expiryDate: null, source: 'orders' })
+      eventBus.emit('strike-price-filter-changed', { strikePrice: null, source: 'orders' })
       eventBus.emit('symbol-filter-changed', { symbolTags: [], source: 'orders' })
       eventBus.emit('asset-filter-changed', { asset: null, source: 'orders' })
       eventBus.emit('quantity-filter-changed', { quantity: null, source: 'orders' })
       eventBus.emit('accounting-quantity-filter-changed', { quantity: null, source: 'orders' })
     }
+    updateFilters()
+  }
+
+  function handleExternalExpiryDateFilter(payload: { expiryDate: string | null; source: string }) {
+    console.log('📍 [Orders] Received expiry date filter:', payload)
+    if (payload.source === 'orders') return
+
+    expiryDateFilter.value = payload.expiryDate
+    const url = new URL(window.location.href)
+    if (payload.expiryDate) {
+      url.searchParams.set('expiryDate', payload.expiryDate)
+    } else {
+      url.searchParams.delete('expiryDate')
+    }
+    window.history.replaceState({}, '', url.toString())
+    updateFilters()
+  }
+
+  function handleExternalStrikePriceFilter(payload: { strikePrice: string | null; source: string }) {
+    console.log('📍 [Orders] Received strike price filter:', payload)
+    if (payload.source === 'orders') return
+
+    strikePriceFilter.value = payload.strikePrice
+    const url = new URL(window.location.href)
+    if (payload.strikePrice) {
+      url.searchParams.set('strikePrice', payload.strikePrice)
+    } else {
+      url.searchParams.delete('strikePrice')
+    }
+    window.history.replaceState({}, '', url.toString())
     updateFilters()
   }
 
@@ -292,6 +394,9 @@ export function useOrdersFilters(
     if (urlFilters.asset) assetFilter.value = urlFilters.asset
     if (urlFilters.quantity !== undefined) quantityFilter.value = urlFilters.quantity
     if (urlFilters.accounting_quantity !== undefined) accountingQuantityFilter.value = urlFilters.accounting_quantity
+    // ADD these lines
+    if (urlFilters.expiryDate) expiryDateFilter.value = urlFilters.expiryDate
+    if (urlFilters.strikePrice) strikePriceFilter.value = urlFilters.strikePrice
   }
 
   return {
@@ -303,6 +408,8 @@ export function useOrdersFilters(
     quantityFilter,
     contractQuantityFilter,
     accountingQuantityFilter,
+    expiryDateFilter,
+    strikePriceFilter,
     totalOrders,
     
     // Methods
@@ -316,6 +423,8 @@ export function useOrdersFilters(
     handleExternalSymbolFilter,
     handleExternalAssetFilter,
     handleExternalQuantityFilter,
+    handleExternalExpiryDateFilter,
+    handleExternalStrikePriceFilter,
     
     // Init
     initializeFiltersFromUrl

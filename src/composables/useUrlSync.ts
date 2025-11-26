@@ -1,6 +1,4 @@
-export function useUrlSync(windowProp: string | null) {
-  const windowKey = windowProp || 'default'
-
+export function useUrlSync(windowKey: string) {
   // Trades Sort
   function writeTradesSortToUrl(sortField: string, sortDir: string) {
     const url = new URL(window.location.href)
@@ -86,34 +84,47 @@ export function useUrlSync(windowProp: string | null) {
   }
 
   // Filters
-  function parseFiltersFromUrl(): {
-    legal_entity?: string
-    symbol?: string[]
-    asset?: string
-    quantity?: number
-    accounting_quantity?: number
-  } {
+  function parseFiltersFromUrl(): Record<string, any> {
     const url = new URL(window.location.href)
-    const account = url.searchParams.get(`${windowKey}_all_cts_clientId`) || undefined
-    const symbolParam = url.searchParams.get(`${windowKey}_all_cts_fi`) || undefined
-    const symbol = symbolParam ? symbolParam.split(',').filter(Boolean) : undefined
-    const asset = url.searchParams.get(`${windowKey}_all_cts_asset`) || undefined
-    const qtyParam = url.searchParams.get(`${windowKey}_all_cts_qty`) || undefined
-    const quantity = qtyParam ? Number(qtyParam) : undefined
-    const accQtyParam = url.searchParams.get(`${windowKey}_all_cts_accounting_qty`) || undefined
-    const accounting_quantity = accQtyParam ? Number(accQtyParam) : undefined
-    return { legal_entity: account, symbol, asset, quantity, accounting_quantity }
-  }
+    const filters: Record<string, any> = {}
 
-  function writeFilterToUrl(key: string, value: string | null) {
-    const url = new URL(window.location.href)
-    const paramName = `${windowKey}_${key}`
-    if (value) {
-      url.searchParams.set(paramName, value)
-    } else {
-      url.searchParams.delete(paramName)
+    // Account filter (universal)
+    const accountId = url.searchParams.get('all_cts_clientId')
+    if (accountId) filters.legal_entity = accountId
+
+    // Expiry date filter (universal)
+    const expiryDate = url.searchParams.get('expiryDate')
+    if (expiryDate) filters.expiryDate = expiryDate
+
+    // Strike price filter (universal)
+    const strikePrice = url.searchParams.get('strikePrice')
+    if (strikePrice) filters.strikePrice = strikePrice
+
+    // Symbol tags filter
+    const symbolParam = url.searchParams.get(`${windowKey}_all_cts_fi`)
+    if (symbolParam) {
+      filters.symbol = symbolParam.split(',').filter(Boolean)
     }
-    window.history.replaceState({}, '', url.toString())
+
+    // Asset filter
+    const assetParam = url.searchParams.get(`${windowKey}_all_cts_asset`)
+    if (assetParam) filters.asset = assetParam
+
+    // Quantity filter
+    const qtyParam = url.searchParams.get(`${windowKey}_all_cts_qty`)
+    if (qtyParam) {
+      const qty = parseFloat(qtyParam)
+      if (!isNaN(qty)) filters.quantity = qty
+    }
+
+    // Accounting quantity filter
+    const accQtyParam = url.searchParams.get(`${windowKey}_all_cts_accounting_qty`)
+    if (accQtyParam) {
+      const qty = parseFloat(accQtyParam)
+      if (!isNaN(qty)) filters.accounting_quantity = qty
+    }
+
+    return filters
   }
 
   return {
@@ -129,7 +140,6 @@ export function useUrlSync(windowProp: string | null) {
     parseColumnRenamesFromUrl,
     writeColumnRenamesToUrl,
     // Filters
-    parseFiltersFromUrl,
-    writeFilterToUrl
+    parseFiltersFromUrl
   }
 }

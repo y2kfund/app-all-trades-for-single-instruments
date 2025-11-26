@@ -395,86 +395,123 @@ async function attachSelectedOrders() {
   }
 
   try {
-    const firstOrderId = Array.from(selectedOrderIdsForAttach.value)[0]
-    const orderData = q.data.value?.find((o: any) => String(o.id || o.orderID) === firstOrderId)
+    // Group orders by internal_account_id and symbol
+    const ordersByAccountAndSymbol = new Map<string, Set<string>>()
     
-    if (!orderData) {
-      showToast('error', 'Error', 'Could not find order data')
-      return
+    for (const orderId of selectedOrderIdsForAttach.value) {
+      const orderData = q.data.value?.find((o: any) => String(o.id || o.orderID) === orderId)
+      if (!orderData) continue
+      
+      const key = `${orderData.internal_account_id}|${orderData.symbol?.split(' ')[0] || orderData.symbol}`
+      if (!ordersByAccountAndSymbol.has(key)) {
+        ordersByAccountAndSymbol.set(key, new Set())
+      }
+      ordersByAccountAndSymbol.get(key)!.add(orderId)
     }
 
-    const symbolRoot = orderData.symbol?.split(' ')[0] || orderData.symbol || ''
-    const { data: positions, error: posError } = await supabase
-      .schema('hf')
-      .from('positions')
-      .select('*')
-      .eq('internal_account_id', orderData.internal_account_id)
-      .eq('symbol', symbolRoot)
-      .eq('asset_class', 'STK')
-      .order('fetched_at', { ascending: false })
-      .limit(1)
+    let totalAttached = 0
+    let totalDetached = 0
+    const errors: string[] = []
 
-    if (posError) {
-      console.error('Error fetching position:', posError)
-      showToast('error', 'Error', `Failed to fetch position: ${posError.message}`)
-      return
+    // Process each account/symbol group
+    for (const [key, orderIds] of ordersByAccountAndSymbol) {
+      const [internalAccountId, symbolRoot] = key.split('|')
+      
+      try {
+        // Find the related STK position for this account/symbol
+        const { data: positions, error: posError } = await supabase
+          .schema('hf')
+          .from('positions')
+          .select('*')
+          .eq('internal_account_id', internalAccountId)
+          .eq('symbol', symbolRoot)
+          .eq('asset_class', 'STK')
+          .order('fetched_at', { ascending: false })
+          .limit(1)
+
+        if (posError) {
+          console.error(`Error fetching position for ${internalAccountId}/${symbolRoot}:`, posError)
+          errors.push(`${internalAccountId}: ${posError.message}`)
+          continue
+        }
+
+        if (!positions || positions.length === 0) {
+          errors.push(`No STK position found for ${internalAccountId}/${symbolRoot}`)
+          continue
+        }
+
+        const relatedStkPosition = positions[0]
+        const positionKey = generatePositionMappingKey({
+          internal_account_id: relatedStkPosition.internal_account_id,
+          symbol: relatedStkPosition.symbol,
+          contract_quantity: relatedStkPosition.contract_quantity || 0,
+          asset_class: relatedStkPosition.asset_class,
+          conid: relatedStkPosition.conid || ''
+        })
+
+        // Get existing mappings for this position
+        const { data: existingMappings } = await supabase
+          .schema('hf')
+          .from('position_order_mappings')
+          .select('order_id')
+          .eq('user_id', props.userId)
+          .eq('mapping_key', positionKey)
+
+        const existingOrderIds = new Set(
+          existingMappings?.map(m => String(m.order_id)) || []
+        )
+
+        // Calculate changes for this position
+        const newForThisPosition = Array.from(orderIds)
+          .filter(id => !existingOrderIds.has(id))
+        const uncheckedForThisPosition = Array.from(existingOrderIds)
+          .filter(id => orderIds.has(id) === false && uncheckedOrderIds.includes(id))
+
+        // Calculate final set of order IDs for this position
+        const finalOrderIds = new Set([
+          ...Array.from(existingOrderIds).filter(id => !uncheckedForThisPosition.includes(id)),
+          ...newForThisPosition
+        ])
+
+        await savePositionOrderMappings(
+          supabase,
+          props.userId,
+          positionKey,
+          finalOrderIds
+        )
+
+        totalAttached += newForThisPosition.length
+        totalDetached += uncheckedForThisPosition.length
+
+      } catch (error: any) {
+        console.error(`Error processing ${internalAccountId}/${symbolRoot}:`, error)
+        errors.push(`${internalAccountId}: ${error.message}`)
+      }
     }
 
-    if (!positions || positions.length === 0) {
-      showToast('error', 'Error', `No related STK position found for symbol root ${symbolRoot}`)
-      return
+    // Show results
+    if (errors.length > 0) {
+      showToast('warning', 'Partial Success', 
+        `Attached ${totalAttached}, detached ${totalDetached}. Errors: ${errors.join('; ')}`)
+    } else {
+      let message = ''
+      if (totalAttached > 0 && totalDetached > 0) {
+        message = `Attached ${totalAttached} and detached ${totalDetached} order(s)`
+      } else if (totalAttached > 0) {
+        message = `Attached ${totalAttached} order(s) to position(s)`
+      } else if (totalDetached > 0) {
+        message = `Detached ${totalDetached} order(s) from position(s)`
+      }
+      showToast('success', 'Success', message)
     }
-
-    const relatedStkPosition = positions[0]
-    console.log('Found related STK position:', relatedStkPosition)
-    
-    const positionKey = generatePositionMappingKey({
-      internal_account_id: relatedStkPosition.internal_account_id,
-      symbol: relatedStkPosition.symbol,
-      contract_quantity: relatedStkPosition.contract_quantity || 0,
-      asset_class: relatedStkPosition.asset_class,
-      conid: relatedStkPosition.conid || ''
-    })
-
-    // Calculate final set of order IDs (existing + new - unchecked)
-    const finalOrderIds = new Set([
-      ...Array.from(attachedOrderIds.value).filter(id => !uncheckedOrderIds.includes(id)),
-      ...newOrderIds
-    ])
-
-    await savePositionOrderMappings(
-      supabase,
-      props.userId,
-      positionKey,
-      finalOrderIds
-    )
-
-    const attachedCount = newOrderIds.length
-    const detachedCount = uncheckedOrderIds.length
-    
-    let message = ''
-    if (attachedCount > 0 && detachedCount > 0) {
-      message = `Attached ${attachedCount} and detached ${detachedCount} order(s)`
-    } else if (attachedCount > 0) {
-      message = `Attached ${attachedCount} order(s) to position`
-    } else if (detachedCount > 0) {
-      message = `Detached ${detachedCount} order(s) from position`
-    }
-
-    showToast('success', 'Success', message)
-    
-    // Update attached orders
-    attachedOrderIds.value = finalOrderIds
     
     // Refetch mappings to get updated data
     await positionOrderMappingsQuery.refetch()
     
     if (eventBus) {
       eventBus.emit('orders-attached', { 
-        positionKey, 
-        orderIds: Array.from(finalOrderIds),
-        attached: newOrderIds,
-        detached: uncheckedOrderIds
+        totalAttached,
+        totalDetached
       })
     }
     
@@ -650,6 +687,7 @@ watch(strikePriceFilter, (newVal, oldVal) => {
   display: inline-flex;
   align-items: center;
   transition: all 0.2s;
+  width: auto;
 }
 
 .btn-primary {

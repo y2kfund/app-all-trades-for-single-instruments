@@ -3,8 +3,9 @@ import type { Ref } from 'vue'
 import flatpickr from 'flatpickr'
 import { formatCurrency, formatNumber, parseTradeDate, extractTagsFromSymbol } from '../utils/formatters'
 
-// Update the OrdersColumnField type
+// Update the OrdersColumnField type to include the new checkbox column
 export type OrdersColumnField =
+  | 'select' // ADD THIS
   | 'legal_entity'
   | 'symbol'
   | 'expiryDate'
@@ -33,10 +34,13 @@ export function useOrdersColumns(
   symbolTagFilters: Ref<string[]>,
   ordersVisibleCols: Ref<OrdersColumnField[]>,
   columnRenames: Ref<Record<string, string>>,
-  createFetchedAtContextMenu: () => any
+  createFetchedAtContextMenu: () => any,
+  selectedOrderIds: Ref<Set<string>>, // ADD THIS PARAMETER
+  onOrderSelectionChange: (orderId: string, selected: boolean) => void // ADD THIS PARAMETER
 ) {
   // All available column options
   const allOrdersColumnOptions: ColumnOption[] = [
+    { field: 'select', label: 'Select' }, // ADD THIS
     { field: 'legal_entity', label: 'Account' },
     { field: 'symbol', label: 'Financial Instrument' },
     { field: 'expiryDate', label: 'Expiry Date' },
@@ -233,6 +237,29 @@ export function useOrdersColumns(
   // Create all column definitions
   const columns = computed(() => {
     const columnMap = new Map<OrdersColumnField, any>([
+      // ADD THIS NEW COLUMN
+      ['select', {
+        title: '',
+        field: 'select',
+        width: 50,
+        frozen: true,
+        headerSort: false,
+        formatter: (cell: any) => {
+          const data = cell.getData()
+          const orderId = String(data.id || data.orderID)
+          const isChecked = selectedOrderIds.value.has(orderId)
+          return `<input type="checkbox" class="order-select-checkbox" data-order-id="${orderId}" ${isChecked ? 'checked' : ''}>`
+        },
+        cellClick: (e: any, cell: any) => {
+          const target = e.target as HTMLElement
+          if (target.classList.contains('order-select-checkbox')) {
+            const data = cell.getData()
+            const orderId = String(data.id || data.orderID)
+            const isChecked = (target as HTMLInputElement).checked
+            onOrderSelectionChange(orderId, isChecked)
+          }
+        }
+      }],
       ['legal_entity', {
         title: getColLabel('legal_entity'),
         field: 'legal_entity',

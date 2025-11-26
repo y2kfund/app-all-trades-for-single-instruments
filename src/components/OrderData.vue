@@ -3,6 +3,7 @@ import { ref, computed, inject, watch, onMounted, onBeforeUnmount, nextTick, onA
 import { DateTime } from 'luxon'
 ;(window as any).luxon = { DateTime }
 import { useOrderQuery, type Order } from '@y2kfund/core/orders'
+import { useSupabase, savePositionOrderMappings, generatePositionMappingKey } from '@y2kfund/core'
 
 // Composables
 import { useToast } from '../composables/useToast'
@@ -51,6 +52,7 @@ const appName = ref(parseAppNameFromUrl())
 
 // Column management - ADD expiryDate and strikePrice
 const allFieldNames: OrdersColumnField[] = [
+  'select', // ADD THIS
   'legal_entity',
   'symbol',
   'expiryDate',
@@ -77,6 +79,23 @@ const columnRenames = ref(parseColumnRenamesFromUrl() as Record<string, string>)
 watch(ordersVisibleCols, (newCols) => {
   writeTradesVisibleColsToUrl(newCols)
 }, { deep: true })
+
+const supabase = useSupabase()
+
+// MOVE THIS BEFORE useOrdersColumns - Order selection state
+const selectedOrderIdsForAttach = ref<Set<string>>(new Set())
+const showAttachButton = computed(() => selectedOrderIdsForAttach.value.size > 0)
+
+// Function to handle order selection
+function handleOrderSelectionChange(orderId: string, selected: boolean) {
+  if (selected) {
+    selectedOrderIdsForAttach.value.add(orderId)
+  } else {
+    selectedOrderIdsForAttach.value.delete(orderId)
+  }
+  // Force reactivity
+  selectedOrderIdsForAttach.value = new Set(selectedOrderIdsForAttach.value)
+}
 
 // Context menu for fetched_at timestamp
 function createFetchedAtContextMenu() {
@@ -120,10 +139,10 @@ const tableDiv = ref<HTMLDivElement | null>(null)
 const tabulatorRef = ref<any>(null)
 const tabulatorReadyRef = ref(false)
 
-// ADD: Track if this component is currently visible
+// Track if this component is currently visible
 const isVisible = ref(true)
 
-// Filters composable (needs tabulator ref) - GET filter refs from composable
+// Filters composable (needs tabulator ref)
 const {
   symbolTagFilters,
   totalTrades,
@@ -137,7 +156,7 @@ const {
   handleExternalStrikePriceFilter,
   initializeFiltersFromUrl,
   accountFilter,
-  assetFilter, // ADD this
+  assetFilter,
   expiryDateFilter,
   strikePriceFilter,
   clearFilter,
@@ -173,7 +192,6 @@ const activeFilters = computed(() => {
     })
   }
   
-  // ADD: Asset class filter
   if (assetFilter.value) {
     filters.push({
       field: 'assetCategory',
@@ -182,7 +200,6 @@ const activeFilters = computed(() => {
     })
   }
   
-  // ADD: Symbol tag filters
   symbolTagFilters.value.forEach(tag => {
     filters.push({
       field: 'symbol',
@@ -198,13 +215,15 @@ const activeFilters = computed(() => {
 const urlFilters = parseFiltersFromUrl()
 initializeFiltersFromUrl(urlFilters)
 
-// Columns composable
+// Columns composable - NOW selectedOrderIdsForAttach is defined
 const { columns, allOrdersColumnOptions } = useOrdersColumns(
   handleCellFilterClick,
   symbolTagFilters,
   ordersVisibleCols,
   columnRenames,
-  createFetchedAtContextMenu
+  createFetchedAtContextMenu,
+  selectedOrderIdsForAttach,
+  handleOrderSelectionChange
 )
 
 // Tabulator setup
@@ -237,7 +256,6 @@ watch(tabulator, (newTabulator) => {
 watch(isTabulatorReady, (isReady) => {
   tabulatorReadyRef.value = isReady
   
-  // Apply filters from URL when tabulator is ready
   if (isReady) {
     nextTick(() => {
       console.log('[OrderData] Tabulator ready, applying filters:', {
@@ -250,7 +268,6 @@ watch(isTabulatorReady, (isReady) => {
   }
 })
 
-// ADD: Watch for when data changes and tabulator is ready
 watch([q.data, isTabulatorReady], ([data, ready]) => {
   if (ready && data && data.length > 0) {
     console.log('[OrderData] Data loaded, reapplying filters')
@@ -266,7 +283,80 @@ watch([tabulator, q.data, isTabulatorReady], ([tab, data, ready]) => {
   }
 })
 
-// Setup external event handlers - ADD new filter handlers
+// Function to attach selected orders
+async function attachSelectedOrders() {
+  if (!props.userId || selectedOrderIdsForAttach.value.size === 0) {
+    showToast('warning', 'No Selection', 'Please select at least one order')
+    return
+  }
+
+  try {
+    const firstOrderId = Array.from(selectedOrderIdsForAttach.value)[0]
+    const orderData = q.data.value?.find((o: any) => String(o.id || o.orderID) === firstOrderId)
+    
+    if (!orderData) {
+      showToast('error', 'Error', 'Could not find order data')
+      return
+    }
+
+    const symbolRoot = orderData.symbol?.split(' ')[0] || orderData.symbol || ''
+    const { data: positions, error: posError } = await supabase
+      .schema('hf')
+      .from('positions')
+      .select('*')
+      .eq('internal_account_id', orderData.internal_account_id)
+      .eq('symbol', symbolRoot)
+      .eq('asset_class', 'STK')
+      .order('fetched_at', { ascending: false })
+      .limit(1)
+
+    if (posError) {
+      console.error('Error fetching position:', posError)
+      showToast('error', 'Error', `Failed to fetch position: ${posError.message}`)
+      return
+    }
+
+    if (!positions || positions.length === 0) {
+      showToast('error', 'Error', `No related STK position found for symbol root ${symbolRoot}`)
+      return
+    }
+
+    const relatedStkPosition = positions[0]
+    console.log('Found related STK position:', relatedStkPosition)
+    
+    const positionKey = generatePositionMappingKey({
+      internal_account_id: relatedStkPosition.internal_account_id,
+      symbol: relatedStkPosition.symbol,
+      contract_quantity: relatedStkPosition.qty,
+      asset_class: relatedStkPosition.asset_class,
+      conid: relatedStkPosition.conid
+    })
+
+    await savePositionOrderMappings(
+      supabase,
+      props.userId,
+      positionKey,
+      selectedOrderIdsForAttach.value
+    )
+
+    showToast('success', 'Success', `Attached ${selectedOrderIdsForAttach.value.size} order(s) to position`)
+    
+    selectedOrderIdsForAttach.value.clear()
+    
+    if (eventBus) {
+      eventBus.emit('orders-attached', { positionKey, orderIds: Array.from(selectedOrderIdsForAttach.value) })
+    }
+    
+    if (tabulator.value) {
+      tabulator.value.redraw()
+    }
+  } catch (error: any) {
+    console.error('Error attaching orders:', error)
+    showToast('error', 'Error', error.message || 'Failed to attach orders')
+  }
+}
+
+// Setup external event handlers
 onMounted(() => {
   console.log('[OrderData] Component mounted')
   
@@ -278,14 +368,12 @@ onMounted(() => {
     eventBus.on('expiry-date-filter-changed', handleExternalExpiryDateFilter)
     eventBus.on('strike-price-filter-changed', handleExternalStrikePriceFilter)
     
-    // Listen for tab changes
     eventBus.on('tab-changed', (payload: { tab: string }) => {
       console.log('[OrderData] Tab changed event received:', payload)
       if (payload.tab === 'orders') {
         console.log('[OrderData] This tab is now active')
         isVisible.value = true
         
-        // CHANGED: Re-read filters from URL when tab becomes active
         setTimeout(() => {
           console.log('[OrderData] Re-reading filters from URL')
           const url = new URL(window.location.href)
@@ -293,17 +381,10 @@ onMounted(() => {
           expiryDateFilter.value = url.searchParams.get('expiryDate') || null
           strikePriceFilter.value = url.searchParams.get('strikePrice') || null
           
-          console.log('[OrderData] Forcing filter update after tab switch. isTabulatorReady:', isTabulatorReady.value)
-          console.log('[OrderData] Current filter values:', {
-            account: accountFilter.value,
-            expiryDate: expiryDateFilter.value,
-            strikePrice: strikePriceFilter.value
-          })
+          console.log('[OrderData] Forcing filter update after tab switch')
           
           if (isTabulatorReady.value && tabulatorRef.value) {
             updateFilters()
-          } else {
-            console.warn('[OrderData] Tabulator not ready yet, setting pending flag')
           }
         }, 100)
       } else {
@@ -312,7 +393,6 @@ onMounted(() => {
     })
   }
   
-  // Apply filters on mount if tabulator is already ready
   if (isTabulatorReady.value) {
     nextTick(() => {
       console.log('[OrderData] Applying filters on mount')
@@ -329,7 +409,7 @@ onBeforeUnmount(() => {
     eventBus.off('quantity-filter-changed', handleExternalQuantityFilter)
     eventBus.off('expiry-date-filter-changed', handleExternalExpiryDateFilter)
     eventBus.off('strike-price-filter-changed', handleExternalStrikePriceFilter)
-    eventBus.off('tab-changed') // ADD: Clean up tab-changed listener
+    eventBus.off('tab-changed')
   }
   q._cleanup?.()
 })
@@ -356,6 +436,20 @@ watch(strikePriceFilter, (newVal, oldVal) => {
 
 <template>
   <div class="order-data-container">
+    <!-- ADD: Attach button -->
+    <div v-if="showAttachButton" class="attach-orders-bar">
+      <button class="btn btn-primary" @click="attachSelectedOrders">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        Attach {{ selectedOrderIdsForAttach.size }} Order(s) to Position
+      </button>
+      <button class="btn btn-secondary" @click="selectedOrderIdsForAttach.clear()">
+        Clear Selection
+      </button>
+    </div>
+
     <!-- Filter Tags Bar -->
     <div v-if="activeFilters.length > 0" class="filters-bar">
       <span class="filters-label">Filtered by:</span>
@@ -394,6 +488,52 @@ watch(strikePriceFilter, (newVal, oldVal) => {
 
 <style scoped>
 @import '../Trades.css';
+
+/* ADD: Styles for attach button bar */
+.attach-orders-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: #e3f2fd;
+  border-bottom: 1px solid #90caf9;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: #2196f3;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #1976d2;
+}
+
+.btn-secondary {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: #5a6268;
+}
+
+/* Style for checkboxes */
+:deep(.order-select-checkbox) {
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+}
 
 .filters-bar {
   display: flex;

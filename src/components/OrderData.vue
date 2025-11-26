@@ -25,6 +25,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ 
+  
   'row-click': [row: Order]
 }>()
 
@@ -596,16 +597,16 @@ watch(strikePriceFilter, (newVal, oldVal) => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem;
+  padding: 0.25rem;
   background: #e3f2fd;
   border-bottom: 1px solid #90caf9;
 }
 
 .btn {
-  padding: 0.5rem 1rem;
+  padding: 0.25rem 0.5rem;
   border: none;
   border-radius: 4px;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   cursor: pointer;
   display: inline-flex;
   align-items: center;

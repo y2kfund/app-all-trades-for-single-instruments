@@ -247,9 +247,12 @@ export function useOrdersColumns(
         headerSort: false,
         formatter: (cell: any) => {
           const data = cell.getData()
-          const orderId = String(data.id || data.orderID)
-          const isChecked = selectedOrderIds.value.has(orderId)
-          const isAttached = attachedOrderIds?.value?.has(orderId) || false
+          const orderId = String(data.id)
+          const isChecked = selectedOrderIds.value.has(orderId) || data.isAttached
+          const isAttached = data.isAttached || false
+
+          console.log('Rendering checkbox for orderId:', orderId, 'isChecked:', isChecked, 'isAttached:', isAttached)
+          console.log('Attached Order IDs:', data.isAttached)
           
           // Add special styling for already attached orders
           const style = isAttached ? 'opacity: 0.6;' : ''

@@ -251,9 +251,6 @@ export function useOrdersColumns(
           const isChecked = selectedOrderIds.value.has(orderId) || data.isAttached
           const isAttached = data.isAttached || false
 
-          console.log('Rendering checkbox for orderId:', orderId, 'isChecked:', isChecked, 'isAttached:', isAttached)
-          console.log('Attached Order IDs:', data.isAttached)
-          
           // Add special styling for already attached orders
           const style = isAttached ? 'opacity: 0.6;' : ''
           const title = isAttached ? 'Already attached to position' : 'Select to attach'

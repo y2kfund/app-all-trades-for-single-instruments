@@ -91,30 +91,40 @@ const attachedOrderIds = ref<Set<string>>(new Set())
 
 // MODIFIED: Order selection state - exclude already attached orders from count
 const selectedOrderIdsForAttach = ref<Set<string>>(new Set())
-const showAttachButton = computed(() => {
-  // Only show button if there are newly selected orders (not already attached)
-  const newSelections = Array.from(selectedOrderIdsForAttach.value)
-    .filter(id => !attachedOrderIds.value.has(id))
-  return newSelections.length > 0
-})
 
-// ADD: Computed to get count of newly selected orders
-const newlySelectedCount = computed(() => {
-  return Array.from(selectedOrderIdsForAttach.value)
-    .filter(id => !attachedOrderIds.value.has(id))
-    .length
-})
-
-// MODIFIED: Function to handle order selection
+// ADD: Handler for order selection changes
 function handleOrderSelectionChange(orderId: string, selected: boolean) {
+  console.log('Order selection changed:', orderId, selected)
+  
   if (selected) {
     selectedOrderIdsForAttach.value.add(orderId)
   } else {
     selectedOrderIdsForAttach.value.delete(orderId)
   }
-  // Force reactivity
+  
+  // Force reactivity update
   selectedOrderIdsForAttach.value = new Set(selectedOrderIdsForAttach.value)
+  
+  console.log('Current selected orders:', Array.from(selectedOrderIdsForAttach.value))
 }
+  
+// MODIFIED: Computed to get count of changes
+const changeCount = computed(() => {
+  const newSelections = Array.from(selectedOrderIdsForAttach.value)
+    .filter(id => !attachedOrderIds.value.has(id))
+  const unchecked = Array.from(attachedOrderIds.value)
+    .filter(id => !selectedOrderIdsForAttach.value.has(id))
+  return {
+    attach: newSelections.length,
+    detach: unchecked.length,
+    total: newSelections.length + unchecked.length
+  }
+})
+
+// MODIFIED: Show button if there are any changes
+const showAttachButton = computed(() => {
+  return changeCount.value.total > 0
+})
 
 // ADD: Watch for changes in position-order mappings and update attached orders
 watch([positionOrderMappingsQuery.data, q.data], async ([mappingsData, ordersData]) => {
@@ -364,24 +374,28 @@ watch([tabulator, q.data, isTabulatorReady], ([tab, data, ready]) => {
   }
 })
 
-// MODIFIED: Function to attach selected orders - only attach newly selected ones
+// MODIFIED: Function to attach/detach selected orders
 async function attachSelectedOrders() {
   if (!props.userId || selectedOrderIdsForAttach.value.size === 0) {
     showToast('warning', 'No Selection', 'Please select at least one order')
     return
   }
 
-  // Filter out already attached orders
+  // Calculate newly selected orders (to attach)
   const newOrderIds = Array.from(selectedOrderIdsForAttach.value)
     .filter(id => !attachedOrderIds.value.has(id))
 
-  if (newOrderIds.length === 0) {
-    showToast('info', 'Already Attached', 'All selected orders are already attached to this position')
+  // Calculate unchecked orders (to detach)
+  const uncheckedOrderIds = Array.from(attachedOrderIds.value)
+    .filter(id => !selectedOrderIdsForAttach.value.has(id))
+
+  if (newOrderIds.length === 0 && uncheckedOrderIds.length === 0) {
+    showToast('info', 'No Changes', 'No changes to order attachments')
     return
   }
 
   try {
-    const firstOrderId = newOrderIds[0]
+    const firstOrderId = Array.from(selectedOrderIdsForAttach.value)[0]
     const orderData = q.data.value?.find((o: any) => String(o.id || o.orderID) === firstOrderId)
     
     if (!orderData) {
@@ -422,9 +436,9 @@ async function attachSelectedOrders() {
       conid: relatedStkPosition.conid || ''
     })
 
-    // Combine existing attached orders with new selections
-    const allOrderIds = new Set([
-      ...Array.from(attachedOrderIds.value),
+    // Calculate final set of order IDs (existing + new - unchecked)
+    const finalOrderIds = new Set([
+      ...Array.from(attachedOrderIds.value).filter(id => !uncheckedOrderIds.includes(id)),
       ...newOrderIds
     ])
 
@@ -432,27 +446,44 @@ async function attachSelectedOrders() {
       supabase,
       props.userId,
       positionKey,
-      allOrderIds
+      finalOrderIds
     )
 
-    showToast('success', 'Success', `Attached ${newOrderIds.length} new order(s) to position`)
+    const attachedCount = newOrderIds.length
+    const detachedCount = uncheckedOrderIds.length
+    
+    let message = ''
+    if (attachedCount > 0 && detachedCount > 0) {
+      message = `Attached ${attachedCount} and detached ${detachedCount} order(s)`
+    } else if (attachedCount > 0) {
+      message = `Attached ${attachedCount} order(s) to position`
+    } else if (detachedCount > 0) {
+      message = `Detached ${detachedCount} order(s) from position`
+    }
+
+    showToast('success', 'Success', message)
     
     // Update attached orders
-    attachedOrderIds.value = allOrderIds
+    attachedOrderIds.value = finalOrderIds
     
     // Refetch mappings to get updated data
     await positionOrderMappingsQuery.refetch()
     
     if (eventBus) {
-      eventBus.emit('orders-attached', { positionKey, orderIds: Array.from(allOrderIds) })
+      eventBus.emit('orders-attached', { 
+        positionKey, 
+        orderIds: Array.from(finalOrderIds),
+        attached: newOrderIds,
+        detached: uncheckedOrderIds
+      })
     }
     
     if (tabulator.value) {
       tabulator.value.redraw()
     }
   } catch (error: any) {
-    console.error('Error attaching orders:', error)
-    showToast('error', 'Error', error.message || 'Failed to attach orders')
+    console.error('Error updating order attachments:', error)
+    showToast('error', 'Error', error.message || 'Failed to update order attachments')
   }
 }
 
@@ -543,13 +574,21 @@ watch(strikePriceFilter, (newVal, oldVal) => {
           <line x1="12" y1="5" x2="12" y2="19"></line>
           <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
-        Attach {{ newlySelectedCount }} New Order(s) to Position
+        <span v-if="changeCount.attach > 0 && changeCount.detach > 0">
+          Attach {{ changeCount.attach }} & Detach {{ changeCount.detach }} Order(s)
+        </span>
+        <span v-else-if="changeCount.attach > 0">
+          Attach {{ changeCount.attach }} Order(s)
+        </span>
+        <span v-else>
+          Detach {{ changeCount.detach }} Order(s)
+        </span>
       </button>
       <button class="btn btn-secondary" @click="selectedOrderIdsForAttach.clear()">
-        Clear Selection
+        Cancel Changes
       </button>
       <span v-if="attachedOrderIds.size > 0" class="attached-info">
-        ({{ attachedOrderIds.size }} already attached)
+        ({{ attachedOrderIds.size }} currently attached)
       </span>
     </div>
 

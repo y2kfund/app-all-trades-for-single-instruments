@@ -1,5 +1,5 @@
 import { Ref } from 'vue';
-export type OrdersColumnField = 'legal_entity' | 'symbol' | 'buySell' | 'openCloseIndicator' | 'assetCategory' | 'orderTime' | 'settleDateTarget' | 'quantity' | 'tradePrice' | 'tradeMoney' | 'netCash' | 'mtmPnl' | 'fifoPnlRealized' | 'ibCommission' | 'closePrice';
+export type OrdersColumnField = 'legal_entity' | 'symbol' | 'expiryDate' | 'strikePrice' | 'buySell' | 'openCloseIndicator' | 'assetCategory' | 'orderTime' | 'settleDateTarget' | 'quantity' | 'tradePrice' | 'tradeMoney' | 'netCash' | 'mtmPnl' | 'fifoPnlRealized' | 'ibCommission' | 'closePrice';
 export interface ColumnOption {
     field: OrdersColumnField;
     label: string;

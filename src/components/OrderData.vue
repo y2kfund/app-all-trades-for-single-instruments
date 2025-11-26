@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, inject, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, inject, watch, onMounted, onBeforeUnmount, nextTick, onActivated } from 'vue'
 import { DateTime } from 'luxon'
 ;(window as any).luxon = { DateTime }
 import { useOrderQuery, type Order } from '@y2kfund/core/orders'
@@ -120,6 +120,9 @@ const tableDiv = ref<HTMLDivElement | null>(null)
 const tabulatorRef = ref<any>(null)
 const tabulatorReadyRef = ref(false)
 
+// ADD: Track if this component is currently visible
+const isVisible = ref(true)
+
 // Filters composable (needs tabulator ref) - GET filter refs from composable
 const {
   symbolTagFilters,
@@ -217,6 +220,21 @@ watch(isTabulatorReady, (isReady) => {
   // Apply filters from URL when tabulator is ready
   if (isReady) {
     nextTick(() => {
+      console.log('[OrderData] Tabulator ready, applying filters:', {
+        account: accountFilter.value,
+        expiryDate: expiryDateFilter.value,
+        strikePrice: strikePriceFilter.value
+      })
+      updateFilters()
+    })
+  }
+})
+
+// ADD: Watch for when data changes and tabulator is ready
+watch([q.data, isTabulatorReady], ([data, ready]) => {
+  if (ready && data && data.length > 0) {
+    console.log('[OrderData] Data loaded, reapplying filters')
+    nextTick(() => {
       updateFilters()
     })
   }
@@ -230,6 +248,8 @@ watch([tabulator, q.data, isTabulatorReady], ([tab, data, ready]) => {
 
 // Setup external event handlers - ADD new filter handlers
 onMounted(() => {
+  console.log('[OrderData] Component mounted')
+  
   if (eventBus) {
     eventBus.on('account-filter-changed', handleExternalAccountFilter)
     eventBus.on('symbol-filter-changed', handleExternalSymbolFilter)
@@ -237,6 +257,47 @@ onMounted(() => {
     eventBus.on('quantity-filter-changed', handleExternalQuantityFilter)
     eventBus.on('expiry-date-filter-changed', handleExternalExpiryDateFilter)
     eventBus.on('strike-price-filter-changed', handleExternalStrikePriceFilter)
+    
+    // Listen for tab changes
+    eventBus.on('tab-changed', (payload: { tab: string }) => {
+      console.log('[OrderData] Tab changed event received:', payload)
+      if (payload.tab === 'orders') {
+        console.log('[OrderData] This tab is now active')
+        isVisible.value = true
+        
+        // CHANGED: Re-read filters from URL when tab becomes active
+        setTimeout(() => {
+          console.log('[OrderData] Re-reading filters from URL')
+          const url = new URL(window.location.href)
+          accountFilter.value = url.searchParams.get('all_cts_clientId') || null
+          expiryDateFilter.value = url.searchParams.get('expiryDate') || null
+          strikePriceFilter.value = url.searchParams.get('strikePrice') || null
+          
+          console.log('[OrderData] Forcing filter update after tab switch. isTabulatorReady:', isTabulatorReady.value)
+          console.log('[OrderData] Current filter values:', {
+            account: accountFilter.value,
+            expiryDate: expiryDateFilter.value,
+            strikePrice: strikePriceFilter.value
+          })
+          
+          if (isTabulatorReady.value && tabulatorRef.value) {
+            updateFilters()
+          } else {
+            console.warn('[OrderData] Tabulator not ready yet, setting pending flag')
+          }
+        }, 100)
+      } else {
+        isVisible.value = false
+      }
+    })
+  }
+  
+  // Apply filters on mount if tabulator is already ready
+  if (isTabulatorReady.value) {
+    nextTick(() => {
+      console.log('[OrderData] Applying filters on mount')
+      updateFilters()
+    })
   }
 })
 
@@ -248,6 +309,7 @@ onBeforeUnmount(() => {
     eventBus.off('quantity-filter-changed', handleExternalQuantityFilter)
     eventBus.off('expiry-date-filter-changed', handleExternalExpiryDateFilter)
     eventBus.off('strike-price-filter-changed', handleExternalStrikePriceFilter)
+    eventBus.off('tab-changed') // ADD: Clean up tab-changed listener
   }
   q._cleanup?.()
 })
@@ -280,7 +342,7 @@ watch(strikePriceFilter, (newVal, oldVal) => {
       <div class="filters-tags">
         <span v-for="f in activeFilters" :key="`${f.field}-${f.value}`" class="filter-tag">
           <strong>{{ f.label }}:</strong> {{ f.value }}
-          <button class="tag-clear" @click="clearFilter(f.field)">✕</button>
+          <button class="tag-clear" @click="clearFilter(f.field as any)">✕</button>
         </span>
         <button class="btn btn-clear-all" @click="clearAllFilters">Clear all</button>
       </div>

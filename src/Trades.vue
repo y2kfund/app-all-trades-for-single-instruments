@@ -1,6 +1,6 @@
 <!-- filepath: /Users/sb/gt/y2kfund/app-trades/src/Trades.new.vue -->
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, inject, watch, provide } from 'vue'
 import type { Trade } from '@y2kfund/core/trades'
 import type { TradesProps } from './index'
 import 'flatpickr/dist/flatpickr.min.css'
@@ -24,6 +24,41 @@ const emit = defineEmits<{
   'maximize': []
 }>()
 
+// CHANGED: Create a simple event bus
+const createEventBus = () => {
+  const listeners = new Map<string, Set<Function>>()
+  
+  return {
+    on(event: string, callback: Function) {
+      if (!listeners.has(event)) {
+        listeners.set(event, new Set())
+      }
+      listeners.get(event)!.add(callback)
+    },
+    off(event: string, callback?: Function) {
+      if (!callback) {
+        listeners.delete(event)
+      } else {
+        listeners.get(event)?.delete(callback)
+      }
+    },
+    emit(event: string, payload?: any) {
+      listeners.get(event)?.forEach(callback => callback(payload))
+    }
+  }
+}
+
+// Try to inject eventBus, if not available create one
+let eventBus = inject<any>('eventBus', null)
+
+if (!eventBus) {
+  console.log('[Trades.vue] No eventBus injected, creating new one')
+  eventBus = createEventBus()
+  provide('eventBus', eventBus)
+} else {
+  console.log('[Trades.vue] Using injected eventBus')
+}
+
 // Tab management
 const activeTab = ref<'orders' | 'trades'>('orders')
 
@@ -35,6 +70,21 @@ const handleTradeRowClick = (row: Trade) => {
 const handleOrderRowClick = (row: Order) => {
   emit('row-click', row)
 }
+
+// Watch for tab changes and trigger filter refresh
+watch(activeTab, (newTab) => {
+  console.log('[Trades.vue] Tab changed to:', newTab, 'eventBus:', !!eventBus)
+  
+  // Small delay to ensure the component is mounted
+  setTimeout(() => {
+    if (eventBus) {
+      console.log('[Trades.vue] Emitting tab-changed event')
+      eventBus.emit('tab-changed', { tab: newTab })
+    } else {
+      console.error('[Trades.vue] EventBus is undefined!')
+    }
+  }, 50)
+})
 </script>
 
 <template>

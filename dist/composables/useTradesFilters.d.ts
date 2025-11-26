@@ -1,6 +1,6 @@
 import { Ref } from 'vue';
 import { TabulatorFull as Tabulator } from 'tabulator-tables';
-export type FilterField = 'legal_entity' | 'symbol' | 'assetCategory' | 'quantity' | 'contract_quantity' | 'accounting_quantity';
+export type FilterField = 'legal_entity' | 'symbol' | 'assetCategory' | 'quantity' | 'contract_quantity' | 'accounting_quantity' | 'expiryDate' | 'strikePrice';
 export interface ActiveFilter {
     field: FilterField;
     value: string;
@@ -20,9 +20,11 @@ export declare function useTradesFilters(windowProp: string | null, tabulator: R
     contractQuantityFilter: Ref<number | null, number | null>;
     accountingQuantityFilter: Ref<number | null, number | null>;
     totalTrades: Ref<number, number>;
-    handleCellFilterClick: (field: FilterField, value: string) => void;
+    expiryDateFilter: Ref<string | null, string | null>;
+    strikePriceFilter: Ref<string | null, string | null>;
+    handleCellFilterClick: (field: FilterField | "expiryDate" | "strikePrice", value: string) => void;
     updateFilters: () => void;
-    clearFilter: (field: FilterField) => void;
+    clearFilter: (field: FilterField | "expiryDate" | "strikePrice") => void;
     clearAllFilters: () => void;
     handleExternalAccountFilter: (payload: {
         accountId: string | null;
@@ -41,5 +43,14 @@ export declare function useTradesFilters(windowProp: string | null, tabulator: R
         source: string;
         accountingQuantity?: number | null;
     }) => void;
+    handleExternalExpiryDateFilter: (payload: {
+        expiryDate: string | null;
+        source: string;
+    }) => void;
+    handleExternalStrikePriceFilter: (payload: {
+        strikePrice: string | null;
+        source: string;
+    }) => void;
     initializeFiltersFromUrl: (urlFilters: any) => void;
+    refreshFiltersFromUrl: () => void;
 };

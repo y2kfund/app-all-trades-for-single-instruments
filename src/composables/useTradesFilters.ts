@@ -1,7 +1,7 @@
-import { ref, nextTick, type Ref } from 'vue'
+import { ref, nextTick, type Ref, watch } from 'vue'
 import type { TabulatorFull as Tabulator } from 'tabulator-tables'
 
-export type FilterField = 'legal_entity' | 'symbol' | 'assetCategory' | 'quantity' | 'contract_quantity' | 'accounting_quantity'
+export type FilterField = 'legal_entity' | 'symbol' | 'assetCategory' | 'quantity' | 'contract_quantity' | 'accounting_quantity' | 'expiryDate' | 'strikePrice'
 
 export interface ActiveFilter {
   field: FilterField
@@ -20,7 +20,6 @@ export function useTradesFilters(
   // Initialize filters from URL on creation
   const url = new URL(window.location.href)
   
-  // Add new filter refs - initialize from URL
   const expiryDateFilter = ref<string | null>(url.searchParams.get('expiryDate') || null)
   const strikePriceFilter = ref<string | null>(url.searchParams.get('strikePrice') || null)
   
@@ -32,6 +31,9 @@ export function useTradesFilters(
   const contractQuantityFilter = ref<number | null>(null)
   const accountingQuantityFilter = ref<number | null>(null)
   const totalTrades = ref(0)
+  
+  // ADD: Track if filters have changed while tabulator wasn't ready
+  const pendingFilterUpdate = ref(false)
 
   function handleCellFilterClick(field: FilterField | 'expiryDate' | 'strikePrice', value: string) {
     console.log('[useTradesFilters] handleCellFilterClick called:', { field, value })
@@ -412,7 +414,9 @@ export function useTradesFilters(
 
   // External event handlers
   function handleExternalAccountFilter(payload: { accountId: string | null; source: string }) {
+    console.log('📍 [Trades] Received account filter:', payload)
     if (payload.source === 'trades') return
+    
     accountFilter.value = payload.accountId
     const url = new URL(window.location.href)
     if (payload.accountId) {
@@ -421,11 +425,18 @@ export function useTradesFilters(
       url.searchParams.delete(`all_cts_clientId`)
     }
     window.history.replaceState({}, '', url.toString())
-    updateFilters()
+    
+    if (isTabulatorReady.value) {
+      updateFilters()
+    } else {
+      pendingFilterUpdate.value = true
+    }
   }
 
   function handleExternalSymbolFilter(payload: { symbolTags: string[]; source: string }) {
+    console.log('📍 [Trades] Received symbol filter:', payload)
     if (payload.source === 'trades') return
+    
     symbolTagFilters.value = payload.symbolTags
     const url = new URL(window.location.href)
     if (payload.symbolTags.length > 0) {
@@ -434,21 +445,35 @@ export function useTradesFilters(
       url.searchParams.delete(`all_cts_fi`)
     }
     window.history.replaceState({}, '', url.toString())
-    updateFilters()
+    
+    if (isTabulatorReady.value) {
+      updateFilters()
+    } else {
+      pendingFilterUpdate.value = true
+    }
   }
 
   function handleExternalAssetFilter(payload: { asset: string | null; source: string }) {
+    console.log('📍 [Trades] Received asset filter:', payload)
     if (payload.source === 'trades') return
+    
     assetFilter.value = payload.asset
     const url = new URL(window.location.href)
     if (payload.asset) url.searchParams.set(`all_cts_asset`, payload.asset)
     else url.searchParams.delete(`all_cts_asset`)
     window.history.replaceState({}, '', url.toString())
-    updateFilters()
+    
+    if (isTabulatorReady.value) {
+      updateFilters()
+    } else {
+      pendingFilterUpdate.value = true
+    }
   }
 
   function handleExternalQuantityFilter(payload: { quantity: number | null; source: string; accountingQuantity?: number | null }) {
+    console.log('📍 [Trades] Received quantity filter:', payload)
     if (payload.source === 'trades') return
+    
     quantityFilter.value = payload.quantity
     accountingQuantityFilter.value = payload.accountingQuantity ?? null
     const url = new URL(window.location.href)
@@ -458,7 +483,12 @@ export function useTradesFilters(
       url.searchParams.delete(`all_cts_qty`)
     }
     window.history.replaceState({}, '', url.toString())
-    updateFilters()
+    
+    if (isTabulatorReady.value) {
+      updateFilters()
+    } else {
+      pendingFilterUpdate.value = true
+    }
   }
 
   function handleExternalExpiryDateFilter(payload: { expiryDate: string | null, source: string }) {
@@ -473,7 +503,12 @@ export function useTradesFilters(
       url.searchParams.delete('expiryDate')
     }
     window.history.replaceState({}, '', url.toString())
-    updateFilters()
+    
+    if (isTabulatorReady.value) {
+      updateFilters()
+    } else {
+      pendingFilterUpdate.value = true
+    }
   }
 
   function handleExternalStrikePriceFilter(payload: { strikePrice: string | null, source: string }) {
@@ -488,7 +523,12 @@ export function useTradesFilters(
       url.searchParams.delete('strikePrice')
     }
     window.history.replaceState({}, '', url.toString())
-    updateFilters()
+    
+    if (isTabulatorReady.value) {
+      updateFilters()
+    } else {
+      pendingFilterUpdate.value = true
+    }
   }
 
   function initializeFiltersFromUrl(urlFilters: any) {
@@ -500,6 +540,29 @@ export function useTradesFilters(
     // ADD these lines
     if (urlFilters.expiryDate) expiryDateFilter.value = urlFilters.expiryDate
     if (urlFilters.strikePrice) strikePriceFilter.value = urlFilters.strikePrice
+  }
+
+  // ADD: Watch for tabulator becoming ready and apply pending filters
+  watch(isTabulatorReady, (isReady) => {
+    if (isReady && pendingFilterUpdate.value) {
+      console.log('[useTradesFilters] Tabulator became ready, applying pending filters')
+      pendingFilterUpdate.value = false
+      updateFilters()
+    }
+  })
+
+  // ADD this new method
+  function refreshFiltersFromUrl() {
+    const url = new URL(window.location.href)
+    accountFilter.value = url.searchParams.get('all_cts_clientId') || null
+    expiryDateFilter.value = url.searchParams.get('expiryDate') || null
+    strikePriceFilter.value = url.searchParams.get('strikePrice') || null
+    
+    console.log('[useTradesFilters] Filters refreshed from URL:', {
+      account: accountFilter.value,
+      expiryDate: expiryDateFilter.value,
+      strikePrice: strikePriceFilter.value
+    })
   }
 
   return {
@@ -530,6 +593,7 @@ export function useTradesFilters(
     handleExternalStrikePriceFilter,
     
     // Init
-    initializeFiltersFromUrl
+    initializeFiltersFromUrl,
+    refreshFiltersFromUrl // ADD this to the return
   }
 }

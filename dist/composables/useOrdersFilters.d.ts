@@ -1,6 +1,6 @@
 import { Ref } from 'vue';
 import { TabulatorFull as Tabulator } from 'tabulator-tables';
-export type FilterField = 'legal_entity' | 'symbol' | 'assetCategory' | 'quantity' | 'contract_quantity' | 'accounting_quantity';
+export type FilterField = 'legal_entity' | 'symbol' | 'assetCategory' | 'quantity' | 'contract_quantity' | 'accounting_quantity' | 'expiryDate' | 'strikePrice';
 export interface ActiveFilter {
     field: FilterField;
     value: string;
@@ -19,6 +19,8 @@ export declare function useOrdersFilters(windowProp: string | null, tabulator: R
     quantityFilter: Ref<number | null, number | null>;
     contractQuantityFilter: Ref<number | null, number | null>;
     accountingQuantityFilter: Ref<number | null, number | null>;
+    expiryDateFilter: Ref<string | null, string | null>;
+    strikePriceFilter: Ref<string | null, string | null>;
     totalOrders: Ref<number, number>;
     handleCellFilterClick: (field: FilterField, value: string) => void;
     updateFilters: () => void;
@@ -40,6 +42,14 @@ export declare function useOrdersFilters(windowProp: string | null, tabulator: R
         quantity: number | null;
         source: string;
         accountingQuantity?: number | null;
+    }) => void;
+    handleExternalExpiryDateFilter: (payload: {
+        expiryDate: string | null;
+        source: string;
+    }) => void;
+    handleExternalStrikePriceFilter: (payload: {
+        strikePrice: string | null;
+        source: string;
     }) => void;
     initializeFiltersFromUrl: (urlFilters: any) => void;
 };

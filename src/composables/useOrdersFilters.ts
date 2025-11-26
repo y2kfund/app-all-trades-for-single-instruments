@@ -1,4 +1,4 @@
-import { ref, nextTick, type Ref } from 'vue'
+import { ref, nextTick, type Ref, watch } from 'vue'
 import type { TabulatorFull as Tabulator } from 'tabulator-tables'
 
 export type FilterField = 'legal_entity' | 'symbol' | 'assetCategory' | 'quantity' | 'contract_quantity' | 'accounting_quantity' | 'expiryDate' | 'strikePrice'
@@ -30,6 +30,18 @@ export function useOrdersFilters(
   const expiryDateFilter = ref<string | null>(url.searchParams.get('expiryDate') || null)
   const strikePriceFilter = ref<string | null>(url.searchParams.get('strikePrice') || null)
   const totalOrders = ref(0)
+
+  // Track if filters have changed while tabulator wasn't ready
+  const pendingFilterUpdate = ref(false)
+
+  // Watch for tabulator becoming ready and apply pending filters
+  watch(isTabulatorReady, (isReady) => {
+    if (isReady && pendingFilterUpdate.value) {
+      console.log('[useOrdersFilters] Tabulator became ready, applying pending filters')
+      pendingFilterUpdate.value = false
+      updateFilters()
+    }
+  })
 
   function handleCellFilterClick(field: FilterField, value: string) {
     console.log('[useOrdersFilters] handleCellFilterClick called:', { field, value })
@@ -307,6 +319,26 @@ export function useOrdersFilters(
     updateFilters()
   }
 
+  function handleExternalAccountFilter(payload: { accountId: string | null; source: string }) {
+    console.log('📍 [Orders] Received account filter:', payload) // FIXED: was "Trades"
+    if (payload.source === 'orders') return
+    
+    accountFilter.value = payload.accountId
+    const url = new URL(window.location.href)
+    if (payload.accountId) {
+      url.searchParams.set(`all_cts_clientId`, payload.accountId)
+    } else {
+      url.searchParams.delete(`all_cts_clientId`)
+    }
+    window.history.replaceState({}, '', url.toString())
+    
+    if (isTabulatorReady.value) {
+      updateFilters()
+    } else {
+      pendingFilterUpdate.value = true
+    }
+  }
+
   function handleExternalExpiryDateFilter(payload: { expiryDate: string | null; source: string }) {
     console.log('📍 [Orders] Received expiry date filter:', payload)
     if (payload.source === 'orders') return
@@ -319,7 +351,13 @@ export function useOrdersFilters(
       url.searchParams.delete('expiryDate')
     }
     window.history.replaceState({}, '', url.toString())
-    updateFilters()
+    
+    // CHANGED: Always try to update, or mark as pending
+    if (isTabulatorReady.value) {
+      updateFilters()
+    } else {
+      pendingFilterUpdate.value = true
+    }
   }
 
   function handleExternalStrikePriceFilter(payload: { strikePrice: string | null; source: string }) {
@@ -334,25 +372,19 @@ export function useOrdersFilters(
       url.searchParams.delete('strikePrice')
     }
     window.history.replaceState({}, '', url.toString())
-    updateFilters()
-  }
-
-  // External event handlers
-  function handleExternalAccountFilter(payload: { accountId: string | null; source: string }) {
-    if (payload.source === 'orders') return
-    accountFilter.value = payload.accountId
-    const url = new URL(window.location.href)
-    if (payload.accountId) {
-      url.searchParams.set(`${windowKey}_orders_clientId`, payload.accountId)
+    
+    // CHANGED: Always try to update, or mark as pending
+    if (isTabulatorReady.value) {
+      updateFilters()
     } else {
-      url.searchParams.delete(`${windowKey}_orders_clientId`)
+      pendingFilterUpdate.value = true
     }
-    window.history.replaceState({}, '', url.toString())
-    updateFilters()
   }
 
   function handleExternalSymbolFilter(payload: { symbolTags: string[]; source: string }) {
+    console.log('📍 [Orders] Received symbol filter:', payload)
     if (payload.source === 'orders') return
+    
     symbolTagFilters.value = payload.symbolTags
     const url = new URL(window.location.href)
     if (payload.symbolTags.length > 0) {
@@ -361,21 +393,37 @@ export function useOrdersFilters(
       url.searchParams.delete(`${windowKey}_orders_fi`)
     }
     window.history.replaceState({}, '', url.toString())
-    updateFilters()
+    
+    // CHANGED: Always try to update, or mark as pending
+    if (isTabulatorReady.value) {
+      updateFilters()
+    } else {
+      pendingFilterUpdate.value = true
+    }
   }
 
   function handleExternalAssetFilter(payload: { asset: string | null; source: string }) {
+    console.log('📍 [Orders] Received asset filter:', payload)
     if (payload.source === 'orders') return
+    
     assetFilter.value = payload.asset
     const url = new URL(window.location.href)
     if (payload.asset) url.searchParams.set(`${windowKey}_orders_asset`, payload.asset)
     else url.searchParams.delete(`${windowKey}_orders_asset`)
     window.history.replaceState({}, '', url.toString())
-    updateFilters()
+    
+    // CHANGED: Always try to update, or mark as pending
+    if (isTabulatorReady.value) {
+      updateFilters()
+    } else {
+      pendingFilterUpdate.value = true
+    }
   }
 
   function handleExternalQuantityFilter(payload: { quantity: number | null; source: string; accountingQuantity?: number | null }) {
+    console.log('📍 [Orders] Received quantity filter:', payload)
     if (payload.source === 'orders') return
+    
     quantityFilter.value = payload.quantity
     accountingQuantityFilter.value = payload.accountingQuantity ?? null
     const url = new URL(window.location.href)
@@ -385,7 +433,13 @@ export function useOrdersFilters(
       url.searchParams.delete(`${windowKey}_orders_qty`)
     }
     window.history.replaceState({}, '', url.toString())
-    updateFilters()
+    
+    // CHANGED: Always try to update, or mark as pending
+    if (isTabulatorReady.value) {
+      updateFilters()
+    } else {
+      pendingFilterUpdate.value = true
+    }
   }
 
   function initializeFiltersFromUrl(urlFilters: any) {

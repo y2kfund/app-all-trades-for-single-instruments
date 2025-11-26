@@ -35,8 +35,9 @@ export function useOrdersColumns(
   ordersVisibleCols: Ref<OrdersColumnField[]>,
   columnRenames: Ref<Record<string, string>>,
   createFetchedAtContextMenu: () => any,
-  selectedOrderIds: Ref<Set<string>>, // ADD THIS PARAMETER
-  onOrderSelectionChange: (orderId: string, selected: boolean) => void // ADD THIS PARAMETER
+  selectedOrderIds: Ref<Set<string>>,
+  onOrderSelectionChange: (orderId: string, selected: boolean) => void,
+  attachedOrderIds?: Ref<Set<string>> // ADD OPTIONAL PARAMETER
 ) {
   // All available column options
   const allOrdersColumnOptions: ColumnOption[] = [
@@ -248,7 +249,18 @@ export function useOrdersColumns(
           const data = cell.getData()
           const orderId = String(data.id || data.orderID)
           const isChecked = selectedOrderIds.value.has(orderId)
-          return `<input type="checkbox" class="order-select-checkbox" data-order-id="${orderId}" ${isChecked ? 'checked' : ''}>`
+          const isAttached = attachedOrderIds?.value?.has(orderId) || false
+          
+          // Add special styling for already attached orders
+          const style = isAttached ? 'opacity: 0.6;' : ''
+          const title = isAttached ? 'Already attached to position' : 'Select to attach'
+          
+          return `<input type="checkbox" 
+                    class="order-select-checkbox ${isAttached ? 'already-attached' : ''}" 
+                    data-order-id="${orderId}" 
+                    ${isChecked ? 'checked' : ''}
+                    style="${style}"
+                    title="${title}">`
         },
         cellClick: (e: any, cell: any) => {
           const target = e.target as HTMLElement

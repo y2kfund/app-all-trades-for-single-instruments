@@ -3,7 +3,7 @@ import { ref, computed, inject, watch, onMounted, onBeforeUnmount, nextTick, onA
 import { DateTime } from 'luxon'
 ;(window as any).luxon = { DateTime }
 import { useOrderQuery, type Order } from '@y2kfund/core/orders'
-import { useSupabase, savePositionOrderMappings, generatePositionMappingKey } from '@y2kfund/core'
+import { useSupabase, savePositionOrderMappings, generatePositionMappingKey, usePositionOrderMappingsQuery } from '@y2kfund/core'
 
 // Composables
 import { useToast } from '../composables/useToast'
@@ -82,11 +82,29 @@ watch(ordersVisibleCols, (newCols) => {
 
 const supabase = useSupabase()
 
-// MOVE THIS BEFORE useOrdersColumns - Order selection state
-const selectedOrderIdsForAttach = ref<Set<string>>(new Set())
-const showAttachButton = computed(() => selectedOrderIdsForAttach.value.size > 0)
+// ADD: Query for existing position-order mappings
+const positionOrderMappingsQuery = usePositionOrderMappingsQuery(props.userId)
 
-// Function to handle order selection
+// ADD: Track which orders are already attached (separate from user selection)
+const attachedOrderIds = ref<Set<string>>(new Set())
+
+// MODIFIED: Order selection state - exclude already attached orders from count
+const selectedOrderIdsForAttach = ref<Set<string>>(new Set())
+const showAttachButton = computed(() => {
+  // Only show button if there are newly selected orders (not already attached)
+  const newSelections = Array.from(selectedOrderIdsForAttach.value)
+    .filter(id => !attachedOrderIds.value.has(id))
+  return newSelections.length > 0
+})
+
+// ADD: Computed to get count of newly selected orders
+const newlySelectedCount = computed(() => {
+  return Array.from(selectedOrderIdsForAttach.value)
+    .filter(id => !attachedOrderIds.value.has(id))
+    .length
+})
+
+// MODIFIED: Function to handle order selection
 function handleOrderSelectionChange(orderId: string, selected: boolean) {
   if (selected) {
     selectedOrderIdsForAttach.value.add(orderId)
@@ -96,6 +114,67 @@ function handleOrderSelectionChange(orderId: string, selected: boolean) {
   // Force reactivity
   selectedOrderIdsForAttach.value = new Set(selectedOrderIdsForAttach.value)
 }
+
+// ADD: Watch for changes in position-order mappings and update attached orders
+watch([positionOrderMappingsQuery.data, q.data], async ([mappingsData, ordersData]) => {
+  if (!ordersData || !props.userId) return
+
+  try {
+    // Build pattern for STK position mapping key
+    // Format: {internal_account_id}|{symbol}|*|STK|*
+    const pattern = `%|${props.symbolRoot}|%|STK|%`
+    
+    console.log('🔍 Searching for STK position mappings with pattern:', pattern)
+
+    // Query position_order_mappings directly with LIKE pattern
+    const { data: mappings, error: mappingsError } = await supabase
+      .schema('hf')
+      .from('position_order_mappings')
+      .select('mapping_key, order_id')
+      .eq('user_id', props.userId)
+      .like('mapping_key', pattern)
+
+    if (mappingsError) {
+      console.error('Error fetching position-order mappings:', mappingsError)
+      attachedOrderIds.value.clear()
+      return
+    }
+
+    console.log('📦 Found mappings:', mappings)
+
+    if (!mappings || mappings.length === 0) {
+      console.log('No STK position mappings found')
+      attachedOrderIds.value.clear()
+      selectedOrderIdsForAttach.value.clear()
+      return
+    }
+
+    // Combine all order IDs from matching mappings
+    const allAttachedIds = new Set<string>()
+    mappings.forEach(mapping => {
+      if (mapping.order_id) {
+        allAttachedIds.add(String(mapping.order_id))
+      }
+    })
+
+    console.log(`✅ Found ${allAttachedIds.size} attached orders for STK position`)
+    
+    attachedOrderIds.value = allAttachedIds
+    
+    // Pre-select attached orders in the UI
+    selectedOrderIdsForAttach.value = new Set(allAttachedIds)
+    
+    // Redraw table to update checkboxes
+    if (tabulator.value) {
+      nextTick(() => {
+        tabulator.value.redraw()
+      })
+    }
+  } catch (error) {
+    console.error('Error checking attached orders:', error)
+    attachedOrderIds.value.clear()
+  }
+}, { immediate: true })
 
 // Context menu for fetched_at timestamp
 function createFetchedAtContextMenu() {
@@ -215,7 +294,7 @@ const activeFilters = computed(() => {
 const urlFilters = parseFiltersFromUrl()
 initializeFiltersFromUrl(urlFilters)
 
-// Columns composable - NOW selectedOrderIdsForAttach is defined
+// Columns composable - pass attachedOrderIds
 const { columns, allOrdersColumnOptions } = useOrdersColumns(
   handleCellFilterClick,
   symbolTagFilters,
@@ -223,7 +302,8 @@ const { columns, allOrdersColumnOptions } = useOrdersColumns(
   columnRenames,
   createFetchedAtContextMenu,
   selectedOrderIdsForAttach,
-  handleOrderSelectionChange
+  handleOrderSelectionChange,
+  attachedOrderIds // ADD THIS
 )
 
 // Tabulator setup
@@ -283,15 +363,24 @@ watch([tabulator, q.data, isTabulatorReady], ([tab, data, ready]) => {
   }
 })
 
-// Function to attach selected orders
+// MODIFIED: Function to attach selected orders - only attach newly selected ones
 async function attachSelectedOrders() {
   if (!props.userId || selectedOrderIdsForAttach.value.size === 0) {
     showToast('warning', 'No Selection', 'Please select at least one order')
     return
   }
 
+  // Filter out already attached orders
+  const newOrderIds = Array.from(selectedOrderIdsForAttach.value)
+    .filter(id => !attachedOrderIds.value.has(id))
+
+  if (newOrderIds.length === 0) {
+    showToast('info', 'Already Attached', 'All selected orders are already attached to this position')
+    return
+  }
+
   try {
-    const firstOrderId = Array.from(selectedOrderIdsForAttach.value)[0]
+    const firstOrderId = newOrderIds[0]
     const orderData = q.data.value?.find((o: any) => String(o.id || o.orderID) === firstOrderId)
     
     if (!orderData) {
@@ -327,24 +416,34 @@ async function attachSelectedOrders() {
     const positionKey = generatePositionMappingKey({
       internal_account_id: relatedStkPosition.internal_account_id,
       symbol: relatedStkPosition.symbol,
-      contract_quantity: relatedStkPosition.qty,
+      contract_quantity: relatedStkPosition.contract_quantity || 0,
       asset_class: relatedStkPosition.asset_class,
-      conid: relatedStkPosition.conid
+      conid: relatedStkPosition.conid || ''
     })
+
+    // Combine existing attached orders with new selections
+    const allOrderIds = new Set([
+      ...Array.from(attachedOrderIds.value),
+      ...newOrderIds
+    ])
 
     await savePositionOrderMappings(
       supabase,
       props.userId,
       positionKey,
-      selectedOrderIdsForAttach.value
+      allOrderIds
     )
 
-    showToast('success', 'Success', `Attached ${selectedOrderIdsForAttach.value.size} order(s) to position`)
+    showToast('success', 'Success', `Attached ${newOrderIds.length} new order(s) to position`)
     
-    selectedOrderIdsForAttach.value.clear()
+    // Update attached orders
+    attachedOrderIds.value = allOrderIds
+    
+    // Refetch mappings to get updated data
+    await positionOrderMappingsQuery.refetch()
     
     if (eventBus) {
-      eventBus.emit('orders-attached', { positionKey, orderIds: Array.from(selectedOrderIdsForAttach.value) })
+      eventBus.emit('orders-attached', { positionKey, orderIds: Array.from(allOrderIds) })
     }
     
     if (tabulator.value) {
@@ -436,18 +535,21 @@ watch(strikePriceFilter, (newVal, oldVal) => {
 
 <template>
   <div class="order-data-container">
-    <!-- ADD: Attach button -->
+    <!-- MODIFIED: Attach button - show count of newly selected orders -->
     <div v-if="showAttachButton" class="attach-orders-bar">
       <button class="btn btn-primary" @click="attachSelectedOrders">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
           <line x1="12" y1="5" x2="12" y2="19"></line>
           <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
-        Attach {{ selectedOrderIdsForAttach.size }} Order(s) to Position
+        Attach {{ newlySelectedCount }} New Order(s) to Position
       </button>
       <button class="btn btn-secondary" @click="selectedOrderIdsForAttach.clear()">
         Clear Selection
       </button>
+      <span v-if="attachedOrderIds.size > 0" class="attached-info">
+        ({{ attachedOrderIds.size }} already attached)
+      </span>
     </div>
 
     <!-- Filter Tags Bar -->
@@ -608,5 +710,11 @@ watch(strikePriceFilter, (newVal, oldVal) => {
 
 .expiry-clickable:hover, .strike-clickable:hover {
   background: #e9ecef;
+}
+
+.attached-info {
+  color: #6c757d;
+  font-size: 0.875rem;
+  font-style: italic;
 }
 </style>

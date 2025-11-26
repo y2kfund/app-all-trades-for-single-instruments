@@ -236,7 +236,7 @@ export function useOrdersColumns(
       ['legal_entity', {
         title: getColLabel('legal_entity'),
         field: 'legal_entity',
-        minWidth: 120,
+        minWidth: 100,
         frozen: true,
         sorter: 'string',
         headerFilter: 'input',
@@ -267,6 +267,7 @@ export function useOrdersColumns(
         field: 'symbol',
         minWidth: 120,
         frozen: true,
+        resizable: true,
         sorter: 'string',
         headerFilter: 'input',
         headerFilterPlaceholder: 'Filter',

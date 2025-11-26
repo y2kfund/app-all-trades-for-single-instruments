@@ -149,6 +149,7 @@ const {
   handleExternalStrikePriceFilter,
   initializeFiltersFromUrl,
   accountFilter,
+  assetFilter, // ADD this
   expiryDateFilter,
   strikePriceFilter,
   clearFilter,
@@ -183,6 +184,24 @@ const activeFilters = computed(() => {
       value: strikePriceFilter.value
     })
   }
+  
+  // ADD: Asset class filter
+  if (assetFilter.value) {
+    filters.push({
+      field: 'assetCategory',
+      label: 'Asset Class',
+      value: assetFilter.value
+    })
+  }
+  
+  // ADD: Symbol tag filters
+  symbolTagFilters.value.forEach(tag => {
+    filters.push({
+      field: 'symbol',
+      label: 'Tag',
+      value: tag
+    })
+  })
   
   return filters
 })

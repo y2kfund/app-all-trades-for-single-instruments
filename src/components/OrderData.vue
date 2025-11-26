@@ -126,7 +126,7 @@ const isVisible = ref(true)
 // Filters composable (needs tabulator ref) - GET filter refs from composable
 const {
   symbolTagFilters,
-  totalOrders,
+  totalTrades,
   handleCellFilterClick,
   updateFilters,
   handleExternalAccountFilter,
@@ -137,10 +137,12 @@ const {
   handleExternalStrikePriceFilter,
   initializeFiltersFromUrl,
   accountFilter,
+  assetFilter, // ADD this
   expiryDateFilter,
   strikePriceFilter,
   clearFilter,
-  clearAllFilters
+  clearAllFilters,
+  refreshFiltersFromUrl
 } = useOrdersFilters(windowKey, tabulatorRef, tabulatorReadyRef, eventBus, extractTagsFromSymbol)
 
 // Computed for active filters
@@ -171,6 +173,24 @@ const activeFilters = computed(() => {
     })
   }
   
+  // ADD: Asset class filter
+  if (assetFilter.value) {
+    filters.push({
+      field: 'assetCategory',
+      label: 'Asset Class',
+      value: assetFilter.value
+    })
+  }
+  
+  // ADD: Symbol tag filters
+  symbolTagFilters.value.forEach(tag => {
+    filters.push({
+      field: 'symbol',
+      label: 'Tag',
+      value: tag
+    })
+  })
+  
   return filters
 })
 
@@ -195,7 +215,7 @@ const { tabulator, isTabulatorReady, isTableInitialized } = useTabulatorSetup(
   computed(() => q.isSuccess.value),
   windowKey,
   updateFilters,
-  totalOrders,
+  totalTrades,
   (event: string, data?: any) => {
     if (event === 'row-click') {
       emit('row-click', data)

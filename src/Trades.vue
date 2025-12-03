@@ -15,7 +15,7 @@ const props = withDefaults(defineProps<TradesProps>(), {
   accountId: '1',
   userId: '67e578fd-2cf7-48a4-b028-a11a3f89bb9b',
   window: null,
-  symbolRoot: 'META',
+  symbolRoot: 'MSFT',
 })
 
 const emit = defineEmits<{ 
